@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Submit — Social Design Map</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="page-submit">
+  <div class="submit-card">
+    <h1>Submit a studio</h1>
+    <p class="sub">Reviewed manually before going live.</p>
+
+    <form id="submit-form" novalidate>
+      <div class="field">
+        <label>Studio / Agency name</label>
+        <input type="text" name="name" required placeholder="e.g. Dark Matter Labs" />
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>City</label>
+          <input type="text" name="city" required placeholder="London" />
+        </div>
+        <div class="field">
+          <label>Country</label>
+          <input type="text" name="country" required placeholder="UK" />
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Latitude</label>
+          <input type="number" name="lat" step="0.0001" required placeholder="51.5074" />
+        </div>
+        <div class="field">
+          <label>Longitude</label>
+          <input type="number" name="lng" step="0.0001" required placeholder="-0.1278" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Category</label>
+        <select name="category" required>
+          <option value="" disabled selected>Select a category</option>
+          <option value="social">Social Design</option>
+          <option value="public">Public Sector Design</option>
+          <option value="sustainable">Sustainable Design</option>
+          <option value="civic">Civic &amp; Community Design</option>
+          <option value="research">Design Research &amp; Policy</option>
+          <option value="humanitarian">Humanitarian Design</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Website</label>
+        <input type="url" name="website" placeholder="https://example.com" />
+      </div>
+
+      <div class="field">
+        <label>Short description</label>
+        <textarea name="description" rows="3" placeholder="One or two sentences about their work and focus."></textarea>
+      </div>
+
+      <div class="field">
+        <label>Tags (comma-separated)</label>
+        <input type="text" name="tags" placeholder="Service Design, Health, Public Sector" />
+      </div>
+
+      <div class="field">
+        <label>Updates jobs every Wednesday 20:00 CET?</label>
+        <select name="wednesdayJobs">
+          <option value="false">No / Unknown</option>
+          <option value="true">Yes</option>
+        </select>
+      </div>
+
+      <div class="submit-actions">
+        <a href="index.html" class="btn-back">← Back to map</a>
+        <button type="submit" class="btn-submit">Submit for review</button>
+      </div>
+    </form>
+
+    <p class="success-msg" id="success-msg">Submitted. We'll review and add it soon.</p>
+  </div>
+
+  <script>
+    document.getElementById('submit-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const entry = {
+        id: 'pending-' + Date.now(),
+        name:         fd.get('name'),
+        city:         fd.get('city'),
+        country:      fd.get('country'),
+        lat:          parseFloat(fd.get('lat')),
+        lng:          parseFloat(fd.get('lng')),
+        category:     fd.get('category'),
+        website:      fd.get('website'),
+        description:  fd.get('description'),
+        tags:         fd.get('tags').split(',').map(t => t.trim()).filter(Boolean),
+        wednesdayJobs: fd.get('wednesdayJobs') === 'true',
+        _submittedAt: new Date().toISOString(),
+        _approved:    false
+      };
+      const pending = JSON.parse(localStorage.getItem('sdm_pending') || '[]');
+      pending.push(entry);
+      localStorage.setItem('sdm_pending', JSON.stringify(pending));
+      e.target.style.display = 'none';
+      document.getElementById('success-msg').style.display = 'block';
+    });
+  </script>
+</body>
+</html>
