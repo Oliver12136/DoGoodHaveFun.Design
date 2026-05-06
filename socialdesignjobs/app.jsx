@@ -100,6 +100,7 @@ function App() {
   const [hoverOrg, setHoverOrg] = useState(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [submitHovered, setSubmitHovered] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -185,30 +186,23 @@ function App() {
 
   return (
     <div className={`sd-root sd-font-${tweaks.fontFamily}`}>
-      {/* top banner */}
-      <div className="sd-topbar">
-        <div className="sd-brand">
-          <span className="sd-brand-mark">●</span>
-          <span className="sd-brand-name">socialdesignjobs</span>
-        </div>
-        <div className="sd-banner">
-          <span className="sd-pulse" />
-          <span>Updated {fmtRelative(meta.lastUpdate)}</span>
-          <span className="sd-banner-sep">·</span>
-          <span>{meta.newJobsCount} new positions</span>
-          <span className="sd-banner-sep">·</span>
-          <span className="sd-banner-next">Refreshes Wed 20:00 CET</span>
-        </div>
-        <div className="sd-top-actions">
-          <button className="sd-pr-btn" onClick={() => setSubmitOpen(true)}>
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-              <path d="M5 3v10M11 3v6M5 3a2 2 0 100 4 2 2 0 000-4zm6 0a2 2 0 100 4 2 2 0 000-4zm0 8v2a2 2 0 002 2" stroke="currentColor" strokeWidth="1.5" />
-            </svg>
-            Submit
-            <span className="sd-pr-count">{meta.pendingSubmissions}</span>
-          </button>
-        </div>
+      {/* meta tab — top left */}
+      <div className="sd-meta-tab">
+        <span className="sd-pulse" />
+        <span>Updated {fmtRelative(meta.lastUpdate)}</span>
+        <span className="sd-banner-sep">·</span>
+        <span>{counterValue} {counterLabel}</span>
       </div>
+
+      {/* submit button — top right */}
+      <button
+        className="sd-submit-fab"
+        onClick={() => setSubmitOpen(true)}
+        onMouseEnter={() => setSubmitHovered(true)}
+        onMouseLeave={() => setSubmitHovered(false)}
+      >
+        {submitHovered ? "add a new one" : "some works missing?"}
+      </button>
 
       <div className={`sd-shell sd-shell-${tweaks.filterPosition}`}>
         <FilterBar
@@ -217,8 +211,6 @@ function App() {
           position={tweaks.filterPosition}
           search={search}
           setSearch={setSearch}
-          view={view}
-          setView={setView}
         />
 
         <div className="sd-stage">
@@ -235,11 +227,19 @@ function App() {
           ) : (
             <ListView orgs={filtered} onSelectOrg={setSelectedOrg} />
           )}
-          <div className="sd-stage-counter" aria-label={`${counterValue} ${counterLabel}`}>
-            <span>{counterValue}</span>
-            <span className="sd-counter-label">{counterLabel}</span>
-          </div>
+          {view === "map" && (
+            <div className="sd-stage-counter" aria-label={`${counterValue} ${counterLabel}`}>
+              <span>{counterValue}</span>
+              <span className="sd-counter-label">{counterLabel}</span>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* view toggle — bottom left */}
+      <div className="sd-view-toggle-fab">
+        <button className={`sd-chip ${view === "map" ? "active" : ""}`} onClick={() => setView("map")}>Map</button>
+        <button className={`sd-chip ${view === "list" ? "active" : ""}`} onClick={() => setView("list")}>List</button>
       </div>
 
       {hoverOrg && view === "map" && !selectedOrg && (

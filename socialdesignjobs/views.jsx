@@ -334,8 +334,7 @@ function MapView({ orgs, palette, onSelectOrg, selectedOrg, hoverOrg, onVisibleC
       setHoveredPointId((current) => current === point.id ? current : point.id);
       callbacksRef.current.onHover({
         ...point.org,
-        name: point.job.title || point.org.name,
-        city: `${point.org.name} · ${point.org.city}`,
+        _hoverJobTitle: point.job.title || null,
       }, mapEventClientPosition(event, map));
     };
     const handleJobLeave = () => {
@@ -510,7 +509,7 @@ function ListView({ orgs, onSelectOrg }) {
 // ──────────────────────────────────────────────────────────────────────────
 // Filter bar
 // ──────────────────────────────────────────────────────────────────────────
-function FilterBar({ filters, setFilters, position, search, setSearch, view, setView }) {
+function FilterBar({ filters, setFilters, position, search, setSearch }) {
   const cats = Object.entries(CATEGORIES);
   const [mobileOpen, setMobileOpen] = useState(false);
   const toggleCat = (k) => {
@@ -523,7 +522,6 @@ function FilterBar({ filters, setFilters, position, search, setSearch, view, set
   const activeFilterCount = [
     filters.kind !== "all",
     filters.track !== "all",
-    filters.region !== "all",
     filters.cats.size !== cats.length,
   ].filter(Boolean).length;
 
@@ -569,19 +567,8 @@ function FilterBar({ filters, setFilters, position, search, setSearch, view, set
           ))}
         </div>
 
-        <div className="sd-filter-group">
-          <Chip active={filters.region === "americas"} onClick={() => setFilters({ ...filters, region: filters.region === "americas" ? "all" : "americas" })}>Americas</Chip>
-          <Chip active={filters.region === "europe"} onClick={() => setFilters({ ...filters, region: filters.region === "europe" ? "all" : "europe" })}>Europe</Chip>
-          <Chip active={filters.region === "africa"} onClick={() => setFilters({ ...filters, region: filters.region === "africa" ? "all" : "africa" })}>Africa</Chip>
-          <Chip active={filters.region === "asia"} onClick={() => setFilters({ ...filters, region: filters.region === "asia" ? "all" : "asia" })}>Asia</Chip>
-          <Chip active={filters.region === "oceania"} onClick={() => setFilters({ ...filters, region: filters.region === "oceania" ? "all" : "oceania" })}>Oceania</Chip>
-        </div>
       </div>
 
-      <div className="sd-filter-group sd-view-toggle">
-        <Chip active={view === "map"} onClick={() => setView("map")}>Map</Chip>
-        <Chip active={view === "list"} onClick={() => setView("list")}>List</Chip>
-      </div>
     </div>
   );
 }

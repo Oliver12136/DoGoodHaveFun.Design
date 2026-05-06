@@ -9,7 +9,7 @@ function Tooltip({ x, y, org }) {
   return (
     <div className="sd-tooltip" style={{ left: x, top: y }}>
       <span className="sd-tt-name">{org.name}</span>
-      <span className="sd-tt-city">{org.city}</span>
+      {org._hoverJobTitle && <span className="sd-tt-city">{org._hoverJobTitle}</span>}
     </div>
   );
 }
