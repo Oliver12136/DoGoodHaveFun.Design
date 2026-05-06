@@ -105,8 +105,9 @@ function fmtRelative(ts) {
 // ──────────────────────────────────────────────────────────────────────────
 // Submit modal (GitHub PR style)
 // ──────────────────────────────────────────────────────────────────────────
-function SubmitModal({ open, onClose, meta, apiOnline, onSubmitted }) {
-  const emptyForm = { name: "", url: "", category: "studio", city: "", country: "", blurb: "", jobTitle: "", jobUrl: "" };
+function SubmitModal({ open, onClose, meta, apiOnline, onSubmitted, endpoint = "/api/submissions" }) {
+  const defaultCat = Object.keys(window.CATEGORIES)[0] || "studio";
+  const emptyForm = { name: "", url: "", category: defaultCat, city: "", country: "", blurb: "", jobTitle: "", jobUrl: "" };
   const [form, setForm] = useState(emptyForm);
   const [submitted, setSubmitted] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -153,7 +154,7 @@ function SubmitModal({ open, onClose, meta, apiOnline, onSubmitted }) {
 
     setStatus("submitting");
     try {
-      const res = await fetch("/api/submissions", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(form),

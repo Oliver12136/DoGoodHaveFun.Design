@@ -104,7 +104,8 @@ function App() {
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/orgs", { cache: "no-store" })
+    const endpoint = window.RESEARCH_MODE ? "/api/research/orgs" : "/api/orgs";
+    fetch(endpoint, { cache: "no-store" })
       .then((res) => {
         if (!res.ok) throw new Error("API unavailable");
         return res.json();
@@ -194,7 +195,7 @@ function App() {
         <span>{counterValue} {counterLabel}</span>
       </div>
 
-      {/* submit button — top right */}
+      {/* submit button — top right, both pages */}
       <button
         className="sd-submit-fab"
         onClick={() => setSubmitOpen(true)}
@@ -203,6 +204,13 @@ function App() {
       >
         {submitHovered ? "add a new one" : "some works missing?"}
       </button>
+
+      {/* nav link — below submit button */}
+      {window.RESEARCH_MODE ? (
+        <a className="sd-research-link" href="/">← Social Design Jobs</a>
+      ) : (
+        <a className="sd-research-link" href="/research">Academic Research →</a>
+      )}
 
       <div className={`sd-shell sd-shell-${tweaks.filterPosition}`}>
         <FilterBar
@@ -260,6 +268,7 @@ function App() {
         onClose={() => setSubmitOpen(false)}
         meta={meta}
         apiOnline={apiOnline}
+        endpoint={window.RESEARCH_MODE ? "/api/research/submissions" : "/api/submissions"}
         onSubmitted={(nextMeta) => {
           if (nextMeta) setMeta(normalizeMeta(nextMeta));
         }}

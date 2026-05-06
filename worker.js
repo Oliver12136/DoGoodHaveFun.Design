@@ -7,6 +7,10 @@ const CATEGORY_KEYS = new Set([
   "studio", "lab", "civic", "climate",
   "ngo", "research", "consult", "community",
 ]);
+const RESEARCH_CATEGORY_KEYS = new Set([
+  "sustain", "inclusion", "embodied", "urban",
+  "culture", "migration", "postcolonial", "health",
+]);
 
 /* ── Response helpers ─────────────────────────────────────────────────────── */
 function json(data, status = 200, extra = {}) {
@@ -138,6 +142,30 @@ function normalizeSubmission(p) {
       job_url: cleanUrl(p.jobUrl),
       coord: parseCoord(p),
       source: "web",
+    },
+  };
+}
+function normalizeResearchSubmission(p) {
+  const name = clean(p.name, 120);
+  const city = clean(p.city, 80);
+  const country = clean(p.country, 80);
+  const errors = [];
+  if (!name) errors.push("Organization is required.");
+  if (!city)  errors.push("City is required.");
+  if (!country) errors.push("Country is required.");
+  return {
+    errors,
+    sub: {
+      id: `rsub_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`,
+      status: "pending",
+      name, city, country,
+      url: cleanUrl(p.url),
+      category: RESEARCH_CATEGORY_KEYS.has(p.category) ? p.category : "sustain",
+      blurb: clean(p.blurb, 500),
+      job_title: clean(p.jobTitle, 120),
+      job_url: cleanUrl(p.jobUrl),
+      coord: parseCoord(p),
+      source: "research-web",
     },
   };
 }
@@ -328,6 +356,136 @@ async function handleApi(request, url, env) {
     }
 
     return json({ error: 'Use status "approved" or "rejected".' }, 422);
+  }
+
+  /* ── public: research orgs ── */
+  if (method === "GET" && path === "/api/research/orgs") {
+    const rows = await DB.prepare("SELECT * FROM research_orgs ORDER BY name ASC").all();
+    return json({ orgs: rows.results.map(rowToOrg) });
+  }
+
+  /* ── admin: research orgs ── */
+  if (path === "/api/admin/research/orgs") {
+    if (!isAdmin(request, env)) return json({ error: "Admin token required." }, 401);
+    if (method !== "GET") return json({ error: "Method not allowed." }, 405);
+    const rows = await DB.prepare("SELECT * FROM research_orgs ORDER BY name ASC").all();
+    return json({ orgs: rows.results.map(rowToOrg) });
+  }
+
+  /* DELETE /api/admin/research/orgs/:id/jobs/:index */
+  const rJobMatch = path.match(/^\/api\/admin\/research\/orgs\/([^/]+)\/jobs\/(\d+)$/);
+  if (rJobMatch) {
+    if (!isAdmin(request, env)) return json({ error: "Admin token required." }, 401);
+    if (method !== "DELETE") return json({ error: "Method not allowed." }, 405);
+    const orgId  = decodeURIComponent(rJobMatch[1]);
+    const jobIdx = Number(rJobMatch[2]);
+    const row = await DB.prepare("SELECT * FROM research_orgs WHERE id = ?").bind(orgId).first();
+    if (!row) return json({ error: "Organization not found." }, 404);
+    const jobs = JSON.parse(row.jobs || "[]");
+    if (jobIdx < 0 || jobIdx >= jobs.length) return json({ error: "Job not found." }, 404);
+    const [removed] = jobs.splice(jobIdx, 1);
+    if (jobs.length === 0) {
+      await DB.prepare("DELETE FROM research_orgs WHERE id = ?").bind(orgId).run();
+      return json({ removedJob: removed, removedOrg: rowToOrg(row) });
+    }
+    await DB.prepare("UPDATE research_orgs SET jobs = ? WHERE id = ?")
+      .bind(JSON.stringify(jobs), orgId).run();
+    return json({ removedJob: removed, removedOrg: null });
+  }
+
+  /* DELETE /api/admin/research/orgs/:id */
+  const rOrgMatch = path.match(/^\/api\/admin\/research\/orgs\/([^/]+)$/);
+  if (rOrgMatch) {
+    if (!isAdmin(request, env)) return json({ error: "Admin token required." }, 401);
+    if (method !== "DELETE") return json({ error: "Method not allowed." }, 405);
+    const orgId = decodeURIComponent(rOrgMatch[1]);
+    const row = await DB.prepare("SELECT * FROM research_orgs WHERE id = ?").bind(orgId).first();
+    if (!row) return json({ error: "Organization not found." }, 404);
+    await DB.prepare("DELETE FROM research_orgs WHERE id = ?").bind(orgId).run();
+    return json({ removedOrg: rowToOrg(row) });
+  }
+
+  /* ── admin: research submissions ── */
+  if (path === "/api/admin/research/submissions") {
+    if (!isAdmin(request, env)) return json({ error: "Admin token required." }, 401);
+    if (method === "GET") {
+      const status = url.searchParams.get("status") || "pending";
+      const rows = status === "all"
+        ? await DB.prepare("SELECT * FROM research_submissions ORDER BY submitted_at DESC").all()
+        : await DB.prepare("SELECT * FROM research_submissions WHERE status = ? ORDER BY submitted_at DESC").bind(status).all();
+      return json({ submissions: rows.results.map(rowToSubmission) });
+    }
+    return json({ error: "Method not allowed." }, 405);
+  }
+
+  /* PATCH /api/admin/research/submissions/:id */
+  const rsubMatch = path.match(/^\/api\/admin\/research\/submissions\/([^/]+)$/);
+  if (rsubMatch) {
+    if (!isAdmin(request, env)) return json({ error: "Admin token required." }, 401);
+    if (method !== "PATCH") return json({ error: "Method not allowed." }, 405);
+    const id = decodeURIComponent(rsubMatch[1]);
+    const payload = await readBody(request);
+    const row = await DB.prepare("SELECT * FROM research_submissions WHERE id = ?").bind(id).first();
+    if (!row) return json({ error: "Submission not found." }, 404);
+    if (payload.status === "rejected") {
+      await DB.prepare("UPDATE research_submissions SET status='rejected', reviewed_at=? WHERE id=?")
+        .bind(new Date().toISOString(), id).run();
+      const updated = await DB.prepare("SELECT * FROM research_submissions WHERE id=?").bind(id).first();
+      return json({ submission: rowToSubmission(updated) });
+    }
+    if (payload.status === "approved") {
+      const sub = rowToSubmission(row);
+      const org = submissionToOrg(sub, { ...(payload.updates || {}), category: undefined });
+      // Use research category if valid, else sustain
+      org.cat = RESEARCH_CATEGORY_KEYS.has(payload.updates?.category || sub.category)
+        ? (payload.updates?.category || sub.category) : "sustain";
+      const coordStr = JSON.stringify(org.coord);
+      const jobsStr  = JSON.stringify(org.jobs);
+      await DB.prepare(
+        `INSERT INTO research_orgs (id,name,cat,city,country,coord,url,blurb,jobs)
+         VALUES (?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET
+           name=excluded.name, cat=excluded.cat, city=excluded.city,
+           country=excluded.country, coord=excluded.coord, url=excluded.url,
+           blurb=excluded.blurb, jobs=excluded.jobs`
+      ).bind(org.id, org.name, org.cat, org.city, org.country,
+             coordStr, org.url, org.blurb, jobsStr).run();
+      await DB.prepare("UPDATE research_submissions SET status='approved', reviewed_at=? WHERE id=?")
+        .bind(new Date().toISOString(), id).run();
+      const updated = await DB.prepare("SELECT * FROM research_submissions WHERE id=?").bind(id).first();
+      return json({ submission: rowToSubmission(updated), org });
+    }
+    return json({ error: 'Use status "approved" or "rejected".' }, 422);
+  }
+
+  /* ── research submissions (separate table) ── */
+  if (path === "/api/research/submissions") {
+    if (method === "POST") {
+      const payload = await readBody(request);
+      const { errors, sub } = normalizeResearchSubmission(payload);
+      if (errors.length) return json({ errors }, 422);
+      const coord = sub.coord;
+      await DB.prepare(
+        `INSERT INTO research_submissions
+          (id,status,name,url,category,city,country,blurb,job_title,job_url,coord_lng,coord_lat,source)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(
+        sub.id, sub.status, sub.name, sub.url, sub.category,
+        sub.city, sub.country, sub.blurb, sub.job_title, sub.job_url,
+        coord ? coord[0] : null, coord ? coord[1] : null, sub.source
+      ).run();
+      const pending = await DB.prepare("SELECT COUNT(*) AS n FROM research_submissions WHERE status='pending'").first();
+      return json({ submission: sub, meta: { pendingSubmissions: pending?.n ?? 1 } }, 201);
+    }
+    if (method === "GET") {
+      if (!isAdmin(request, env)) return json({ error: "Admin token required." }, 401);
+      const status = url.searchParams.get("status") || "pending";
+      const rows = status === "all"
+        ? await DB.prepare("SELECT * FROM research_submissions ORDER BY submitted_at DESC").all()
+        : await DB.prepare("SELECT * FROM research_submissions WHERE status = ? ORDER BY submitted_at DESC").bind(status).all();
+      return json({ submissions: rows.results.map(rowToSubmission) });
+    }
+    return json({ error: "Method not allowed." }, 405);
   }
 
   return json({ error: "API route not found." }, 404);

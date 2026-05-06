@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Research Labs — admin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body class="sd-admin-page">
+  <main class="sd-admin-shell">
+    <section id="admin-login" class="sd-admin-login">
+      <div class="sd-admin-kicker">Admin access</div>
+      <h1>Research submissions</h1>
+      <div class="sd-admin-token-row">
+        <input id="admin-token" type="password" placeholder="Admin token" autocomplete="current-password">
+        <button id="admin-enter" class="sd-btn-primary">Enter</button>
+      </div>
+      <p id="admin-login-error" class="sd-admin-error"></p>
+    </section>
+
+    <section id="admin-panel" class="sd-admin-panel" hidden>
+      <header class="sd-admin-header">
+        <div>
+          <div class="sd-admin-kicker">Academic Research Labs</div>
+          <h1>Submission queue</h1>
+        </div>
+        <div class="sd-admin-actions">
+          <select id="admin-view" class="sd-admin-select" aria-label="Admin view">
+            <option value="submissions">Submission queue</option>
+            <option value="orgs">Research labs</option>
+          </select>
+          <select id="status-filter" class="sd-admin-select">
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="all">All</option>
+          </select>
+          <a class="sd-admin-link" href="./">Research map</a>
+          <a class="sd-admin-link" href="../admin.html">Main admin</a>
+          <button id="admin-logout" class="sd-admin-ghost">Logout</button>
+        </div>
+      </header>
+
+      <div id="admin-status" class="sd-admin-status"></div>
+      <div id="submissions-list" class="sd-admin-list"></div>
+    </section>
+  </main>
+
+  <script src="./research-admin.js"></script>
+</body>
+</html>

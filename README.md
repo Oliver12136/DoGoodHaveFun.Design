@@ -1,137 +1,148 @@
 # DoGoodHaveFun.Design
-## Find Design Work That Helps Build a Better World
 
-A map-first directory for early-career social design, civic technology, public innovation, sustainability, research, and nonprofit design opportunities around the world.
+**A global map of social design work and academic research labs.**
 
-The project combines a globe-style interactive job map with a lightweight submission and admin review backend. It is designed as a focused tool for discovering organizations, browsing open roles, and maintaining a curated jobs dataset without needing a full CMS.
+Browse it live at **[dogood.oghuzhan.work](https://dogood.oghuzhan.work)**
 
-## Highlights
+---
 
-- Globe-style MapLibre interface with OpenStreetMap-based vector tiles
-- Job-level map points, with more positions revealed as users zoom in
-- Fast touchpad and mobile pinch interactions tuned for map-first browsing
-- Mobile-first layout with filters collapsed by default
-- Search, category, role type, track, and region filters
-- Submission form for community-suggested organizations and jobs
-- Admin review queue for approving or rejecting submissions
-- Lightweight Node.js backend with a JSON data store
+## What it is
 
-## Tech Stack
+Two interconnected maps for people looking to do meaningful design work:
 
-- React 18 via browser scripts
-- MapLibre GL JS for the interactive globe map
-- OpenFreeMap / OpenStreetMap-based vector map style
-- Node.js HTTP server
-- JSON-backed data storage
-- Plain HTML, CSS, and JavaScript
+- **[Social Design Jobs](https://dogood.oghuzhan.work)** — studios, civic labs, NGOs, climate consultancies, and community collectives with open roles in social impact design, around the world.
+- **[Academic Research Labs](https://dogood.oghuzhan.work/research)** — university research groups in HCI, interaction design, and related fields with a social, critical, or humanistic focus, spanning 30+ countries.
 
-## Project Structure
+Both maps share the same interface: zoom, filter by category, search by name or city, switch between map and list view, and click any point to see the full profile and open opportunities.
 
-```text
+---
+
+## Why a globe?
+
+This project uses a globe-first map because representation matters.
+
+Flat world maps are never neutral: every projection involves distortion. Some of the most familiar projections — especially Mercator-style world maps — enlarge regions closer to the poles and make equatorial regions appear relatively smaller. As a result, Africa is often visually reduced compared to its true size, in a way many people have simply grown used to.
+
+Using a globe helps preserve a more truthful sense of scale and reminds us that the world is not flat, centered, or proportioned in only one way. When users zoom in, the globe gradually becomes a practical flat map for exploring local organizations and opportunities, while still beginning from a more balanced global perspective.
+
+---
+
+## Interface
+
+- Globe-style interactive map (MapLibre GL JS + OpenFreeMap tiles)
+- Filter by category, role type (role / project), track (intern / fellowship / contract / full-time), and region
+- Live search by organization name, city, or country
+- Map counter shows only the visible points in the current viewport
+- List view for scanning without a map
+- Submission form — anyone can suggest a missing organization
+
+---
+
+## Tech stack
+
+| Layer | What |
+|---|---|
+| Frontend | React 18 (browser CDN), Babel standalone, MapLibre GL JS |
+| Fonts | Inter, JetBrains Mono, Newsreader (Google Fonts) |
+| Map tiles | OpenFreeMap (OpenStreetMap-based vector tiles) |
+| Backend | Cloudflare Workers (ES module) |
+| Database | Cloudflare D1 (SQLite-compatible) |
+| Hosting | Cloudflare Workers static assets |
+| Domain | `dogood.oghuzhan.work` (custom domain via Cloudflare) |
+
+No build step — the frontend is plain JSX transpiled in the browser.
+
+---
+
+## Project structure
+
+```
 .
-├── server.js                         # Static server and JSON API
-├── package.json                      # Node scripts
-├── data/
-│   └── socialdesignjobs.json         # Runtime jobs and submissions database
+├── worker.js                         # Cloudflare Worker: API + asset routing
+├── wrangler.toml                     # Cloudflare deployment config
 └── socialdesignjobs/
     ├── index.html                    # Main app shell
-    ├── app.jsx                       # App state, filters, API integration
-    ├── views.jsx                     # Map, list, and filter views
-    ├── components.jsx                # Shared UI components
-    ├── styles.css                    # App and admin styling
-    ├── admin.html                    # Admin review page
-    ├── admin.js                      # Admin queue logic
-    └── data.js                       # Static fallback dataset
+    ├── app.jsx                       # App state, filters, routing
+    ├── views.jsx                     # Map, list, and filter bar views
+    ├── components.jsx                # OrgCard, Tooltip, SubmitModal
+    ├── tweaks-panel.jsx              # Dev tweaks panel
+    ├── styles.css                    # All styles
+    ├── data.js                       # Category definitions + static fallback
+    └── research/
+        ├── index.html                # Academic Research map shell
+        └── research-data.js          # Research categories (loaded at runtime)
 ```
 
-## Getting Started
+---
 
-Requirements:
+## API (public)
 
-- Node.js 18 or newer
+```
+GET  /api/orgs                  → all social design organizations
+POST /api/submissions           → submit a new organization for review
 
-Install and run:
+GET  /api/research/orgs         → all academic research labs
+POST /api/research/submissions  → submit a new research lab for review
+```
+
+Both submission endpoints accept JSON:
+
+```json
+{
+  "name": "Organization name",
+  "url": "https://...",
+  "city": "City",
+  "country": "Country",
+  "category": "studio",
+  "blurb": "One-line description",
+  "jobTitle": "Role title",
+  "jobUrl": "https://..."
+}
+```
+
+Fields `name`, `city`, and `country` are required.
+
+---
+
+## Running locally
+
+Requirements: [Node.js](https://nodejs.org/) 18+ and [Wrangler](https://developers.cloudflare.com/workers/wrangler/).
 
 ```bash
-npm start
+npm install -g wrangler
+wrangler dev
 ```
 
-Then open:
-
-```text
-http://localhost:4173/socialdesignjobs/
-```
-
-If port `4173` is already in use, the server automatically tries the next available port and prints the final URL.
-
-## Admin Access
-
-For local development, the default admin token is:
-
-```text
-jobmap2024
-```
-
-For production, set a strong token explicitly:
+The app runs at `http://localhost:8787`. To deploy:
 
 ```bash
-ADMIN_TOKEN="your-long-random-token" NODE_ENV=production npm start
+wrangler deploy
 ```
 
-The admin page is available at:
+---
 
-```text
-http://localhost:4173/admin
-```
+## Data
 
-## API
+**Social design jobs** are stored in a Cloudflare D1 database (`orgs` and `submissions` tables). Community submissions go through a review queue before appearing on the map.
 
-Public endpoints:
+**Academic research labs** are stored in a separate D1 table (`research_orgs`). The 40+ labs currently in the database were researched and manually curated from public information about active university research groups globally. Research submissions go into a separate `research_submissions` table.
 
-- `GET /api/health`
-- `GET /api/orgs`
-- `POST /api/submissions`
+Both datasets are updated manually on a regular basis.
 
-Admin endpoints:
+---
 
-- `GET /api/submissions?status=pending`
-- `PATCH /api/submissions/:id`
-- `GET /api/admin/orgs`
-- `DELETE /api/admin/orgs/:id`
-- `DELETE /api/admin/orgs/:id/jobs/:jobIndex`
+## Contributing
 
-Admin requests require the `x-admin-token` header or a `token` query parameter.
+The easiest way to contribute is through the submission form on the site — click **"some works missing?"** on either map.
 
-## Data Model
+If you want to contribute to the code, open an issue or pull request on this repository.
 
-The main database lives in `data/socialdesignjobs.json` and contains:
-
-- `orgs`: approved organizations and their job listings
-- `submissions`: pending, approved, or rejected community submissions
-- `meta`: public update metadata shown in the app banner
-
-The browser also includes `socialdesignjobs/data.js` as a static fallback dataset when the API is unavailable.
-
-The admin screen can review submissions, delete existing organizations, or remove individual job points from the map.
-
-## Deployment Notes
-
-This app can run anywhere Node.js is available. For production:
-
-- Set `NODE_ENV=production`
-- Set a strong `ADMIN_TOKEN`
-- Back up `data/socialdesignjobs.json`
-- Avoid committing real private submissions or secrets
-- Put the server behind HTTPS if deployed publicly
+---
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0 or later (GPL-3.0-or-later)**.
+**GNU General Public License v3.0 or later (GPL-3.0-or-later)**
 
-I choose the GPL because I believe in **strong copyleft**: software freedom should travel with the code. Anyone is welcome to use, study, share, and modify this project, but redistributed versions and derivative works must preserve the same freedoms for downstream users under the terms of the GPL.
+Anyone is welcome to use, study, share, and modify this project. Redistributed versions and derivative works must preserve the same freedoms for downstream users under the terms of the GPL.
 
-In practice, this means that if you distribute modified versions, forks, or works based on this project, you must do so under the GPL v3.0 or a later version, and provide the corresponding source code as required by the license.
-
-This project is shared in support of free software, open collaboration, and a commons where improvements remain available to the community.
-
-See the [LICENSE](./LICENSE) file for the full license text.
+See [LICENSE](./LICENSE) for the full text.
