@@ -143,6 +143,10 @@ If you want to contribute to the code, open an issue or pull request on this rep
 
 **GNU General Public License v3.0 or later (GPL-3.0-or-later)**
 
-Anyone is welcome to use, study, share, and modify this project. Redistributed versions and derivative works must preserve the same freedoms for downstream users under the terms of the GPL.
+I choose the GPL because I believe in **strong copyleft**: software freedom should travel with the code. Anyone is welcome to use, study, share, and modify this project, but redistributed versions and derivative works must preserve the same freedoms for downstream users under the terms of the GPL.
 
-See [LICENSE](./LICENSE) for the full text.
+In practice, this means that if you distribute modified versions, forks, or works based on this project, you must do so under the GPL v3.0 or a later version, and provide the corresponding source code as required by the license.
+
+This project is shared in support of free software, open collaboration, and a commons where improvements remain available to the community.
+
+See the [LICENSE](./LICENSE) file for the full license text.
