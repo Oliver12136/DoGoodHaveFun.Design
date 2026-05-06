@@ -125,8 +125,12 @@ This app can run anywhere Node.js is available. For production:
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 or later.
+This project is licensed under the **GNU General Public License v3.0 or later (GPL-3.0-or-later)**.
 
-You may redistribute and/or modify this project under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or any later version.
+I choose the GPL because I believe in **strong copyleft**: software freedom should travel with the code. Anyone is welcome to use, study, share, and modify this project, but redistributed versions and derivative works must preserve the same freedoms for downstream users under the terms of the GPL.
 
-See the [LICENSE](./LICENSE) file for details.
+In practice, this means that if you distribute modified versions, forks, or works based on this project, you must do so under the GPL v3.0 or a later version, and provide the corresponding source code as required by the license.
+
+This project is shared in support of free software, open collaboration, and a commons where improvements remain available to the community.
+
+See the [LICENSE](./LICENSE) file for the full license text.
