@@ -125,4 +125,8 @@ This app can run anywhere Node.js is available. For production:
 
 ## License
 
-No license has been selected yet. Add a license before distributing or accepting outside contributions.
+This project is licensed under the GNU General Public License v3.0 or later.
+
+You may redistribute and/or modify this project under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or any later version.
+
+See the [LICENSE](./LICENSE) file for details.
