@@ -12,5 +12,6 @@ coverage/
 dist/
 build/
 test-results/
+social_design_jobs.csv
 *.tmp
 *.log

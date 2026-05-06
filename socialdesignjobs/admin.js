@@ -17,8 +17,10 @@ const els = {
   loginError: document.getElementById("admin-login-error"),
   logout: document.getElementById("admin-logout"),
   status: document.getElementById("admin-status"),
+  view: document.getElementById("admin-view"),
   filter: document.getElementById("status-filter"),
   list: document.getElementById("submissions-list"),
+  title: document.querySelector(".sd-admin-header h1"),
 };
 
 let adminToken = sessionStorage.getItem("sdj_admin_token") || "";
@@ -53,7 +55,7 @@ async function api(path, options = {}) {
 function showPanel() {
   els.login.hidden = true;
   els.panel.hidden = false;
-  loadSubmissions();
+  loadCurrentView();
 }
 
 function showLogin() {
@@ -74,6 +76,14 @@ async function enter() {
   }
 }
 
+function loadCurrentView() {
+  const mode = els.view.value;
+  els.filter.hidden = mode !== "submissions";
+  if (els.title) els.title.textContent = mode === "orgs" ? "Map records" : "Submission queue";
+  if (mode === "orgs") return loadOrgs();
+  return loadSubmissions();
+}
+
 async function loadSubmissions() {
   setStatus("Loading…");
   els.list.innerHTML = "";
@@ -81,6 +91,20 @@ async function loadSubmissions() {
     const data = await api(`/api/submissions?status=${encodeURIComponent(els.filter.value)}`);
     renderSubmissions(data.submissions || []);
     setStatus(`${data.submissions?.length || 0} submissions`);
+  } catch (error) {
+    setStatus(error.message, "error");
+    if (/token|unauthorized/i.test(error.message)) showLogin();
+  }
+}
+
+async function loadOrgs() {
+  setStatus("Loading map records…");
+  els.list.innerHTML = "";
+  try {
+    const data = await api("/api/admin/orgs");
+    renderOrgs(data.orgs || []);
+    const jobCount = (data.orgs || []).reduce((sum, org) => sum + (org.jobs?.length || 0), 0);
+    setStatus(`${data.orgs?.length || 0} organizations · ${jobCount} job points`);
   } catch (error) {
     setStatus(error.message, "error");
     if (/token|unauthorized/i.test(error.message)) showLogin();
@@ -135,6 +159,49 @@ function renderSubmissions(submissions) {
   }).join("");
 }
 
+function renderOrgs(orgs) {
+  if (!orgs.length) {
+    els.list.innerHTML = `<div class="sd-admin-empty">No map records yet.</div>`;
+    return;
+  }
+
+  els.list.innerHTML = orgs.map((org) => {
+    const coord = Array.isArray(org.coord) ? org.coord : ["", ""];
+    const cat = CATEGORIES[org.cat] || org.cat || "Uncategorized";
+    const jobs = Array.isArray(org.jobs) ? org.jobs : [];
+    return `
+      <article class="sd-admin-card" data-org-id="${esc(org.id)}">
+        <div class="sd-admin-card-head">
+          <div>
+            <span class="sd-admin-pill">${esc(cat)}</span>
+            <h2>${esc(org.name)}</h2>
+            <p>${esc(org.city)}, ${esc(org.country)} · ${esc(coord[0])}, ${esc(coord[1])}</p>
+          </div>
+          ${org.url && org.url !== "#" ? `<a class="sd-admin-link" href="${esc(org.url)}" target="_blank" rel="noreferrer">Website</a>` : ""}
+        </div>
+
+        <p class="sd-admin-blurb">${esc(org.blurb)}</p>
+
+        <div class="sd-admin-job-list">
+          ${jobs.map((job, index) => `
+            <div class="sd-admin-job-row">
+              <div>
+                <strong>${esc(job.title || "Open positions")}</strong>
+                <span>${esc([job.type, job.track, job.location || job.remote].filter(Boolean).join(" · "))}</span>
+              </div>
+              <button class="sd-admin-danger" data-action="delete-job" data-org-id="${esc(org.id)}" data-job-index="${index}">Delete point</button>
+            </div>
+          `).join("")}
+        </div>
+
+        <div class="sd-admin-card-actions">
+          <button class="sd-admin-danger" data-action="delete-org" data-org-id="${esc(org.id)}">Delete organization</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
 function valuesFromCard(card) {
   const data = {};
   card.querySelectorAll("input, select, textarea").forEach((field) => {
@@ -146,6 +213,39 @@ function valuesFromCard(card) {
 async function handleListClick(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
+
+  if (button.dataset.action === "delete-org") {
+    const orgId = button.dataset.orgId;
+    if (!orgId || !confirm("Delete this organization and all of its map points?")) return;
+
+    button.disabled = true;
+    setStatus("Deleting organization…");
+    try {
+      await api(`/api/admin/orgs/${encodeURIComponent(orgId)}`, { method: "DELETE" });
+      await loadOrgs();
+    } catch (error) {
+      setStatus(error.message, "error");
+      button.disabled = false;
+    }
+    return;
+  }
+
+  if (button.dataset.action === "delete-job") {
+    const orgId = button.dataset.orgId;
+    const jobIndex = button.dataset.jobIndex;
+    if (!orgId || jobIndex === undefined || !confirm("Delete this job point from the map?")) return;
+
+    button.disabled = true;
+    setStatus("Deleting job point…");
+    try {
+      await api(`/api/admin/orgs/${encodeURIComponent(orgId)}/jobs/${encodeURIComponent(jobIndex)}`, { method: "DELETE" });
+      await loadOrgs();
+    } catch (error) {
+      setStatus(error.message, "error");
+      button.disabled = false;
+    }
+    return;
+  }
 
   const card = button.closest(".sd-admin-card");
   const id = card?.dataset.id;
@@ -183,6 +283,7 @@ els.logout.addEventListener("click", () => {
   showLogin();
 });
 els.filter.addEventListener("change", loadSubmissions);
+els.view.addEventListener("change", loadCurrentView);
 els.list.addEventListener("click", handleListClick);
 
 if (adminToken) showPanel();

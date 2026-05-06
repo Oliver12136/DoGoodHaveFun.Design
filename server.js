@@ -222,6 +222,57 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { orgs: db.orgs, meta: publicMeta(db) });
   }
 
+  if (url.pathname === "/api/admin/orgs") {
+    if (!isAdmin(req, url)) return sendJson(res, 401, { error: "Admin token required." });
+    if (req.method !== "GET") return sendJson(res, 405, { error: "Method not allowed." });
+
+    const db = await readDb();
+    const orgs = [...db.orgs].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    return sendJson(res, 200, { orgs, meta: publicMeta(db) });
+  }
+
+  const orgJobMatch = url.pathname.match(/^\/api\/admin\/orgs\/([^/]+)\/jobs\/(\d+)$/);
+  if (orgJobMatch) {
+    if (!isAdmin(req, url)) return sendJson(res, 401, { error: "Admin token required." });
+    if (req.method !== "DELETE") return sendJson(res, 405, { error: "Method not allowed." });
+
+    const orgId = decodeURIComponent(orgJobMatch[1]);
+    const jobIndex = Number(orgJobMatch[2]);
+    const db = await readDb();
+    const orgIndex = db.orgs.findIndex((org) => org.id === orgId);
+    if (orgIndex === -1) return sendJson(res, 404, { error: "Organization not found." });
+
+    const org = db.orgs[orgIndex];
+    if (!Array.isArray(org.jobs) || jobIndex < 0 || jobIndex >= org.jobs.length) {
+      return sendJson(res, 404, { error: "Job point not found." });
+    }
+
+    const [removedJob] = org.jobs.splice(jobIndex, 1);
+    let removedOrg = null;
+    if (!org.jobs.length) {
+      [removedOrg] = db.orgs.splice(orgIndex, 1);
+    }
+    db.meta.lastUpdate = new Date().toISOString();
+    await writeDb(db);
+    return sendJson(res, 200, { removedJob, removedOrg, meta: publicMeta(db) });
+  }
+
+  const orgMatch = url.pathname.match(/^\/api\/admin\/orgs\/([^/]+)$/);
+  if (orgMatch) {
+    if (!isAdmin(req, url)) return sendJson(res, 401, { error: "Admin token required." });
+    if (req.method !== "DELETE") return sendJson(res, 405, { error: "Method not allowed." });
+
+    const orgId = decodeURIComponent(orgMatch[1]);
+    const db = await readDb();
+    const orgIndex = db.orgs.findIndex((org) => org.id === orgId);
+    if (orgIndex === -1) return sendJson(res, 404, { error: "Organization not found." });
+
+    const [removedOrg] = db.orgs.splice(orgIndex, 1);
+    db.meta.lastUpdate = new Date().toISOString();
+    await writeDb(db);
+    return sendJson(res, 200, { removedOrg, meta: publicMeta(db) });
+  }
+
   if (req.method === "POST" && url.pathname === "/api/submissions") {
     const payload = await readJsonBody(req);
     const { errors, submission } = normalizeSubmission(payload);

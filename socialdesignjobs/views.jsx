@@ -417,6 +417,7 @@ function MapView({ orgs, palette, onSelectOrg, selectedOrg, hoverOrg, onVisibleC
   }, [mapReady, palette]);
 
   const revealedJobs = useMemo(() => {
+    if (jobPoints.length <= 12) return jobPoints;
     const threshold = globeRevealThreshold(mapZoom);
     return jobPoints.filter((point) => {
       if (selectedOrg?.id === point.org.id || hoverOrg?.id === point.org.id) return true;

@@ -877,6 +877,10 @@ body:not(.sd-admin-page) { touch-action: none; }
   color: var(--fg-3);
   font-size: 12px;
 }
+.sd-admin-blurb {
+  padding: 14px 0 0;
+  line-height: 1.45;
+}
 .sd-admin-pill {
   display: inline-flex;
   color: #AACFE5;
@@ -923,10 +927,39 @@ body:not(.sd-admin-page) { touch-action: none; }
   gap: 10px;
   border-top: 1px solid var(--line);
   padding-top: 12px;
+  flex-wrap: wrap;
 }
 .sd-admin-card-actions button:disabled {
   opacity: 0.62;
   cursor: wait;
+}
+.sd-admin-job-list {
+  display: grid;
+  gap: 8px;
+  padding: 14px 0;
+}
+.sd-admin-job-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.sd-admin-job-row strong,
+.sd-admin-job-row span {
+  display: block;
+}
+.sd-admin-job-row strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.sd-admin-job-row span {
+  color: var(--fg-3);
+  font-size: 12px;
+  margin-top: 3px;
 }
 
 /* Scrollbars */
@@ -1089,5 +1122,9 @@ body:not(.sd-admin-page) { touch-action: none; }
   }
   .sd-admin-grid {
     grid-template-columns: 1fr;
+  }
+  .sd-admin-job-row {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

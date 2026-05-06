@@ -95,6 +95,9 @@ Admin endpoints:
 
 - `GET /api/submissions?status=pending`
 - `PATCH /api/submissions/:id`
+- `GET /api/admin/orgs`
+- `DELETE /api/admin/orgs/:id`
+- `DELETE /api/admin/orgs/:id/jobs/:jobIndex`
 
 Admin requests require the `x-admin-token` header or a `token` query parameter.
 
@@ -107,6 +110,8 @@ The main database lives in `data/socialdesignjobs.json` and contains:
 - `meta`: public update metadata shown in the app banner
 
 The browser also includes `socialdesignjobs/data.js` as a static fallback dataset when the API is unavailable.
+
+The admin screen can review submissions, delete existing organizations, or remove individual job points from the map.
 
 ## Deployment Notes
 
