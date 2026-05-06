@@ -1,4 +1,5 @@
-# Social Design Jobs Map
+# DoGoodHaveFun.Design
+## Find Design Work That Helps Build a Better World
 
 A map-first directory for early-career social design, civic technology, public innovation, sustainability, research, and nonprofit design opportunities around the world.
 
