@@ -90,6 +90,7 @@ async function loadOrgs() {
   try {
     const data = await api("/api/admin/research/orgs");
     renderOrgs(data.orgs || []);
+    bindGeoInputKeys(els.list);
     const jobCount = (data.orgs || []).reduce((sum, o) => sum + (o.jobs?.length || 0), 0);
     setStatus(`${data.orgs?.length || 0} labs · ${jobCount} opportunities`);
   } catch (error) {
@@ -97,6 +98,85 @@ async function loadOrgs() {
     if (/token|unauthorized/i.test(error.message)) showLogin();
   }
 }
+
+function bindGeoInputKeys(container) {
+  container.querySelectorAll(".sd-geo-input").forEach((input) => {
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const orgId = input.closest("[data-org-id]")?.dataset.orgId;
+      if (orgId) window.adminGeoSearch(orgId);
+    });
+  });
+}
+
+async function nominatimSearch(query) {
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`;
+  const res = await fetch(url, { headers: { "Accept-Language": "en" } });
+  return res.json();
+}
+
+window.adminGeoSearch = async function(orgId) {
+  const card = document.querySelector(`[data-org-id="${CSS.escape(orgId)}"]`);
+  if (!card) return;
+  const input   = card.querySelector(".sd-geo-input");
+  const results = card.querySelector(".sd-geo-results");
+  if (!input || !results) return;
+
+  const q = input.value.trim();
+  if (!q) return;
+  results.innerHTML = `<span class="sd-geo-hint">Searching…</span>`;
+
+  try {
+    const data = await nominatimSearch(q);
+    if (!data.length) { results.innerHTML = `<span class="sd-geo-hint">No results</span>`; return; }
+    results.innerHTML = data.map((r) => {
+      const city    = r.address?.city || r.address?.town || r.address?.village || r.address?.county || "";
+      const country = r.address?.country || "";
+      return `<button class="sd-geo-result" data-lng="${r.lon}" data-lat="${r.lat}" data-city="${esc(city)}" data-country="${esc(country)}">${esc(r.display_name)}</button>`;
+    }).join("");
+
+    results.querySelectorAll(".sd-geo-result").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const lng = parseFloat(btn.dataset.lng);
+        const lat = parseFloat(btn.dataset.lat);
+        card.querySelector('[name="lng"]').value = lng.toFixed(4);
+        card.querySelector('[name="lat"]').value = lat.toFixed(4);
+        results.innerHTML = `<span class="sd-geo-hint">📍 ${lat.toFixed(4)}, ${lng.toFixed(4)}</span>`;
+      });
+    });
+  } catch {
+    results.innerHTML = `<span class="sd-geo-hint">Search failed</span>`;
+  }
+};
+
+window.adminSaveCoord = async function(orgId) {
+  const card = document.querySelector(`[data-org-id="${CSS.escape(orgId)}"]`);
+  if (!card) return;
+  const lng = parseFloat(card.querySelector('[name="lng"]')?.value);
+  const lat = parseFloat(card.querySelector('[name="lat"]')?.value);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) { setStatus("Invalid coordinates", "error"); return; }
+
+  const btn = card.querySelector(".sd-coord-save-btn");
+  if (btn) btn.disabled = true;
+  setStatus("Saving…");
+  try {
+    await api(`/api/admin/research/orgs/${encodeURIComponent(orgId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ coord: [lng, lat] }),
+    });
+    const display = card.querySelector(".sd-coord-display");
+    if (display) {
+      const parts = display.textContent.split("·")[0].trim();
+      display.textContent = `${parts} · ${lng.toFixed(4)}, ${lat.toFixed(4)}`;
+    }
+    setStatus("Coordinates saved ✓");
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
 
 async function loadSubmissions() {
   setStatus("Loading…");
@@ -126,18 +206,32 @@ function renderOrgs(orgs) {
     const coord = Array.isArray(org.coord) ? org.coord : ["", ""];
     const cat = RESEARCH_CATEGORIES[org.cat] || org.cat || "Uncategorized";
     const jobs = Array.isArray(org.jobs) ? org.jobs : [];
+    const safeId = esc(org.id);
     return `
-      <article class="sd-admin-card" data-org-id="${esc(org.id)}">
+      <article class="sd-admin-card" data-org-id="${safeId}">
         <div class="sd-admin-card-head">
           <div>
             <span class="sd-admin-pill">${esc(cat)}</span>
             <h2>${esc(org.name)}</h2>
-            <p>${esc(org.city)}, ${esc(org.country)} · ${esc(coord[0])}, ${esc(coord[1])}</p>
+            <p class="sd-coord-display">${esc(org.city)}, ${esc(org.country)} · ${esc(coord[0])}, ${esc(coord[1])}</p>
           </div>
           ${org.url && org.url !== "#" ? `<a class="sd-admin-link" href="${esc(org.url)}" target="_blank" rel="noreferrer">Website</a>` : ""}
         </div>
 
         <p class="sd-admin-blurb">${esc(org.blurb)}</p>
+
+        <div class="sd-admin-coord-section">
+          <div class="sd-admin-geo-row">
+            <input class="sd-geo-input" type="text" placeholder="Search location to update coordinates…" value="${esc(org.city + ", " + org.country)}">
+            <button class="sd-admin-ghost sd-geo-search-btn" onclick="adminGeoSearch('${safeId}')">Search</button>
+          </div>
+          <div class="sd-geo-results" id="geo-results-${safeId}"></div>
+          <div class="sd-admin-grid sd-coord-grid">
+            <label>Longitude<input name="lng" type="number" step="0.0001" value="${esc(coord[0])}" placeholder="-0.1278"></label>
+            <label>Latitude<input name="lat" type="number" step="0.0001" value="${esc(coord[1])}" placeholder="51.5074"></label>
+          </div>
+          <button class="sd-btn-primary sd-coord-save-btn" onclick="adminSaveCoord('${safeId}')">Save coordinates</button>
+        </div>
 
         <div class="sd-admin-job-list">
           ${jobs.map((job, index) => `
@@ -146,13 +240,13 @@ function renderOrgs(orgs) {
                 <strong>${esc(job.title || "Opportunity")}</strong>
                 <span>${esc([job.type, job.track, job.location || job.remote].filter(Boolean).join(" · "))}</span>
               </div>
-              <button class="sd-admin-danger" data-action="delete-job" data-org-id="${esc(org.id)}" data-job-index="${index}">Delete</button>
+              <button class="sd-admin-danger" data-action="delete-job" data-org-id="${safeId}" data-job-index="${index}">Delete</button>
             </div>
           `).join("")}
         </div>
 
         <div class="sd-admin-card-actions">
-          <button class="sd-admin-danger" data-action="delete-org" data-org-id="${esc(org.id)}">Delete lab</button>
+          <button class="sd-admin-danger" data-action="delete-org" data-org-id="${safeId}">Delete lab</button>
         </div>
       </article>
     `;

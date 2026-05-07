@@ -24,12 +24,6 @@ function orgRevealScore(org) {
   return clamp(stableUnit(org.id || org.name) * 0.86 - jobBonus, 0, 1);
 }
 
-function jobRevealScore(point) {
-  const orgBase = orgRevealScore(point.org) * 0.72;
-  const jobSpread = stableUnit(point.id) * 0.2;
-  const laterJobDelay = Math.min(0.26, point.jobIndex * 0.08);
-  return clamp(orgBase + jobSpread + laterJobDelay, 0, 1);
-}
 
 function globeRevealThreshold(zoom) {
   return clamp(0.34 + (zoom - 1.1) * 0.24, 0.32, 1);
@@ -98,18 +92,6 @@ function syncDotImages(map) {
   });
 }
 
-function visualCoord(point, visibleIndex, visibleCount) {
-  const [lng, lat] = point.org.coord;
-  if (visibleCount <= 1) return [lng, lat];
-
-  const angle = stableUnit(point.id) * Math.PI * 2 + (Math.PI * 2 * visibleIndex / visibleCount);
-  const radius = Math.min(0.045, 0.014 + visibleCount * 0.0035);
-  const lngScale = Math.max(0.35, Math.cos((lat * Math.PI) / 180));
-  return [
-    lng + (Math.cos(angle) * radius) / lngScale,
-    lat + Math.sin(angle) * radius,
-  ];
-}
 
 function mapEventClientPosition(event, map) {
   const original = event.originalEvent || {};
@@ -158,9 +140,14 @@ function kineticBoost(state, delta, now) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Map view — real globe/OSM-style interaction. Each visible job is one point.
+const MAP_STYLES = {
+  day:   "https://tiles.openfreemap.org/styles/bright",
+  night: "https://tiles.openfreemap.org/styles/fiord-color",
+};
+
+// Map view — real globe/OSM-style interaction. One point per organisation.
 // ──────────────────────────────────────────────────────────────────────────
-function MapView({ orgs, palette, onSelectOrg, selectedOrg, hoverOrg, onVisibleCount, onHover }) {
+function MapView({ orgs, palette, onSelectOrg, selectedOrg, hoverOrg, onVisibleCount, onHover, mapMode = "day" }) {
   const mapNodeRef = useRef(null);
   const mapRef = useRef(null);
   const callbacksRef = useRef({ onHover, onSelectOrg });
@@ -168,6 +155,8 @@ function MapView({ orgs, palette, onSelectOrg, selectedOrg, hoverOrg, onVisibleC
   const [mapReady, setMapReady] = useState(false);
   const [mapZoom, setMapZoom] = useState(1.2);
   const [hoveredPointId, setHoveredPointId] = useState(null);
+  const [styleKey, setStyleKey] = useState(0);
+  const prevMapModeRef = useRef(mapMode);
 
   useEffect(() => {
     callbacksRef.current = { onHover, onSelectOrg };
@@ -179,7 +168,7 @@ function MapView({ orgs, palette, onSelectOrg, selectedOrg, hoverOrg, onVisibleC
     const initialZoom = window.innerWidth <= 760 ? 0.72 : 1.2;
     const map = new window.maplibregl.Map({
       container: mapNodeRef.current,
-      style: "https://tiles.openfreemap.org/styles/bright",
+      style: MAP_STYLES[mapMode] || MAP_STYLES.day,
       center: [12, 24],
       zoom: initialZoom,
       minZoom: 0.25,
@@ -328,14 +317,11 @@ function MapView({ orgs, palette, onSelectOrg, selectedOrg, hoverOrg, onVisibleC
     };
     const handleJobMove = (event) => {
       const feature = event.features?.[0];
-      const point = feature && jobLookupRef.current.get(feature.properties?.pointId);
-      if (!point) return;
+      const org = feature && jobLookupRef.current.get(feature.properties?.orgId);
+      if (!org) return;
       map.getCanvas().style.cursor = "pointer";
-      setHoveredPointId((current) => current === point.id ? current : point.id);
-      callbacksRef.current.onHover({
-        ...point.org,
-        _hoverJobTitle: point.job.title || null,
-      }, mapEventClientPosition(event, map));
+      setHoveredPointId((current) => current === org.id ? current : org.id);
+      callbacksRef.current.onHover(org, mapEventClientPosition(event, map));
     };
     const handleJobLeave = () => {
       map.getCanvas().style.cursor = "";
@@ -344,8 +330,8 @@ function MapView({ orgs, palette, onSelectOrg, selectedOrg, hoverOrg, onVisibleC
     };
     const handleJobClick = (event) => {
       const feature = event.features?.[0];
-      const point = feature && jobLookupRef.current.get(feature.properties?.pointId);
-      if (point) callbacksRef.current.onSelectOrg(point.org);
+      const org = feature && jobLookupRef.current.get(feature.properties?.orgId);
+      if (org) callbacksRef.current.onSelectOrg(org);
     };
     let jobEventsBound = false;
     const bindJobEvents = () => {
@@ -363,7 +349,11 @@ function MapView({ orgs, palette, onSelectOrg, selectedOrg, hoverOrg, onVisibleC
       jobEventsBound = false;
     };
 
-    map.on("style.load", setGlobeProjection);
+    map.on("style.load", () => {
+      setGlobeProjection();
+      ensureJobLayers();
+      setStyleKey((k) => k + 1);
+    });
     map.on("load", () => {
       setGlobeProjection();
       ensureJobLayers();
@@ -396,18 +386,6 @@ function MapView({ orgs, palette, onSelectOrg, selectedOrg, hoverOrg, onVisibleC
     };
   }, []);
 
-  const jobPoints = useMemo(() => {
-    return orgs.flatMap((org) => {
-      if (!Array.isArray(org.coord) || org.coord.length !== 2) return [];
-      return (org.jobs || []).map((job, jobIndex) => ({
-        id: `${org.id || org.name}::${job.title || "job"}::${jobIndex}`,
-        org,
-        job,
-        jobIndex,
-      }));
-    });
-  }, [orgs]);
-
   useEffect(() => {
     const map = mapRef.current;
     if (!mapReady || !map) return;
@@ -415,56 +393,52 @@ function MapView({ orgs, palette, onSelectOrg, selectedOrg, hoverOrg, onVisibleC
     map.triggerRepaint?.();
   }, [mapReady, palette]);
 
-  const revealedJobs = useMemo(() => {
-    if (jobPoints.length <= 12) return jobPoints;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || prevMapModeRef.current === mapMode) return;
+    prevMapModeRef.current = mapMode;
+    map.setStyle(MAP_STYLES[mapMode] || MAP_STYLES.day);
+  }, [mapMode, mapReady]);
+
+  const revealedOrgs = useMemo(() => {
+    const valid = orgs.filter((org) => Array.isArray(org.coord) && org.coord.length === 2);
+    if (valid.length <= 12) return valid;
     const threshold = globeRevealThreshold(mapZoom);
-    return jobPoints.filter((point) => {
-      if (selectedOrg?.id === point.org.id || hoverOrg?.id === point.org.id) return true;
-      return mapZoom >= 5.25 || jobRevealScore(point) <= threshold;
+    return valid.filter((org) => {
+      if (selectedOrg?.id === org.id || hoverOrg?.id === org.id) return true;
+      return mapZoom >= 5.25 || orgRevealScore(org) <= threshold;
     });
-  }, [jobPoints, selectedOrg, hoverOrg, mapZoom]);
+  }, [orgs, selectedOrg, hoverOrg, mapZoom]);
 
   const jobData = useMemo(() => {
-    const grouped = new Map();
-    for (const point of revealedJobs) {
-      const key = point.org.id || point.org.name;
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key).push(point);
-    }
-
     const lookup = new Map();
     const features = [];
-    grouped.forEach((points) => {
-      const sorted = [...points].sort((a, b) => jobRevealScore(a) - jobRevealScore(b));
-      sorted.forEach((point, index) => {
-        const cat = CATEGORIES[point.org.cat] || CATEGORIES.studio;
-        lookup.set(point.id, point);
-        features.push({
-          type: "Feature",
-          id: point.id,
-          properties: {
-            pointId: point.id,
-            orgId: point.org.id,
-            color: cat.color,
-            icon: `sd-dot-${point.org.cat || "studio"}`,
-            selected: selectedOrg?.id === point.org.id,
-            hovered: hoveredPointId === point.id,
-            title: point.job.title || "Open position",
-            orgName: point.org.name,
-          },
-          geometry: {
-            type: "Point",
-            coordinates: visualCoord(point, index, sorted.length),
-          },
-        });
+    for (const org of revealedOrgs) {
+      const cat = CATEGORIES[org.cat] || CATEGORIES.studio;
+      lookup.set(org.id, org);
+      features.push({
+        type: "Feature",
+        id: org.id,
+        properties: {
+          pointId: org.id,
+          orgId: org.id,
+          color: cat.color,
+          icon: `sd-dot-${org.cat || "studio"}`,
+          selected: selectedOrg?.id === org.id,
+          hovered: hoveredPointId === org.id,
+          orgName: org.name,
+        },
+        geometry: {
+          type: "Point",
+          coordinates: org.coord,
+        },
       });
-    });
-
+    }
     return {
       lookup,
       collection: { type: "FeatureCollection", features },
     };
-  }, [revealedJobs, selectedOrg, hoveredPointId]);
+  }, [revealedOrgs, selectedOrg, hoveredPointId]);
 
   useEffect(() => {
     jobLookupRef.current = jobData.lookup;
@@ -473,7 +447,7 @@ function MapView({ orgs, palette, onSelectOrg, selectedOrg, hoverOrg, onVisibleC
     const source = map?.getSource(JOB_SOURCE_ID);
     if (!mapReady || !source?.setData) return;
     source.setData(jobData.collection);
-  }, [jobData, mapReady, onVisibleCount]);
+  }, [jobData, mapReady, onVisibleCount, styleKey]);
 
   return (
     <div className="sd-map sd-real-map">
@@ -527,17 +501,17 @@ function FilterBar({ filters, setFilters, position, search, setSearch }) {
 
   return (
     <div className={`sd-filters sd-filters-${position} ${mobileOpen ? "is-open" : ""}`}>
+      {/* transparent backdrop — closes panel on outside tap (mobile only) */}
+      {mobileOpen && <div className="sd-m-backdrop" onClick={() => setMobileOpen(false)} aria-hidden="true" />}
+
       <div className="sd-filter-search">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2"/><path d="M20 20l-3-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         <input placeholder="Search org or city" value={search} onChange={(e) => setSearch(e.target.value)} />
         {search && <button className="sd-clear" onClick={() => setSearch("")}>×</button>}
       </div>
 
-      <button
-        className="sd-mobile-filter-toggle"
-        aria-expanded={mobileOpen}
-        onClick={() => setMobileOpen((open) => !open)}
-      >
+      {/* ── desktop: existing toggle + advanced panel (hidden on mobile) ── */}
+      <button className="sd-mobile-filter-toggle" aria-expanded={mobileOpen} onClick={() => setMobileOpen((o) => !o)}>
         <span>Filters</span>
         <span>{activeFilterCount ? `${activeFilterCount} active` : "All"}</span>
       </button>
@@ -547,26 +521,43 @@ function FilterBar({ filters, setFilters, position, search, setSearch }) {
           <Chip active={filters.kind === "role"} onClick={() => setKind("role")}>Role-based</Chip>
           <Chip active={filters.kind === "project"} onClick={() => setKind("project")}>Project-based</Chip>
         </div>
-
         <div className="sd-filter-group">
           <Chip active={filters.track === "intern"} onClick={() => setTrack("intern")}>Intern</Chip>
           <Chip active={filters.track === "full-time"} onClick={() => setTrack("full-time")}>Full-time</Chip>
           <Chip active={filters.track === "fellowship"} onClick={() => setTrack("fellowship")}>Fellowship</Chip>
         </div>
-
         <div className="sd-filter-cats">
           {cats.map(([k, c]) => (
-            <button key={k}
-              className={`sd-cat-chip ${filters.cats.has(k) ? "active" : ""}`}
-              onClick={() => toggleCat(k)}
-              style={{ "--cat-color": c.color }}
-            >
+            <button key={k} className={`sd-cat-chip ${filters.cats.has(k) ? "active" : ""}`} onClick={() => toggleCat(k)} style={{ "--cat-color": c.color }}>
               <span className="sd-cat-dot" style={{ background: c.color }} />
               {c.label}
             </button>
           ))}
         </div>
+      </div>
 
+      {/* ── mobile: circular FAB + vertical panel (hidden on desktop) ── */}
+      <button className="sd-m-filter-fab" onClick={() => setMobileOpen((o) => !o)} aria-expanded={mobileOpen} aria-label="Filters">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+          <line x1="4" y1="6" x2="20" y2="6"/>
+          <line x1="7" y1="12" x2="17" y2="12"/>
+          <line x1="10" y1="18" x2="14" y2="18"/>
+        </svg>
+        {activeFilterCount > 0 && <span className="sd-m-filter-badge">{activeFilterCount}</span>}
+      </button>
+
+      <div className="sd-m-filter-panel">
+        <div className="sd-m-track-row">
+          <button className={`sd-m-track-chip ${filters.track === "all" ? "active" : ""}`} onClick={() => setFilters({ ...filters, track: "all" })}>All</button>
+          <button className={`sd-m-track-chip ${filters.track === "intern" ? "active" : ""}`} onClick={() => setTrack("intern")}>Internship</button>
+          <button className={`sd-m-track-chip ${filters.track === "full-time" ? "active" : ""}`} onClick={() => setTrack("full-time")}>Full-time</button>
+        </div>
+        {cats.map(([k, c]) => (
+          <button key={k} className={`sd-m-cat-chip ${filters.cats.has(k) ? "active" : ""}`} onClick={() => toggleCat(k)} style={{ "--cat-color": c.color }}>
+            <span className="sd-cat-dot" style={{ background: c.color }} />
+            {c.label}
+          </button>
+        ))}
       </div>
 
     </div>

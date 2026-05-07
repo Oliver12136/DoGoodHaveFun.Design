@@ -100,7 +100,11 @@ function App() {
   const [hoverOrg, setHoverOrg] = useState(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
   const [submitOpen, setSubmitOpen] = useState(false);
-  const [submitHovered, setSubmitHovered] = useState(false);
+  const [mapMode, setMapMode] = useState("day");
+
+  useEffect(() => {
+    document.body.classList.toggle("sd-night-mode", mapMode === "night");
+  }, [mapMode]);
 
   useEffect(() => {
     let alive = true;
@@ -186,7 +190,7 @@ function App() {
     : "jobs";
 
   return (
-    <div className={`sd-root sd-font-${tweaks.fontFamily}`}>
+    <div className={`sd-root sd-font-${tweaks.fontFamily}${mapMode === "night" ? " sd-night-mode" : ""}`}>
       {/* meta tab — top left */}
       <div className="sd-meta-tab">
         <span className="sd-pulse" />
@@ -196,13 +200,9 @@ function App() {
       </div>
 
       {/* submit button — top right, both pages */}
-      <button
-        className="sd-submit-fab"
-        onClick={() => setSubmitOpen(true)}
-        onMouseEnter={() => setSubmitHovered(true)}
-        onMouseLeave={() => setSubmitHovered(false)}
-      >
-        {submitHovered ? "add a new one" : "some works missing?"}
+      <button className="sd-submit-fab" onClick={() => setSubmitOpen(true)}>
+        <span className="sd-fab-default">some works missing?</span>
+        <span className="sd-fab-hover" aria-hidden="true">add a new one</span>
       </button>
 
       {/* nav link — below submit button */}
@@ -231,6 +231,7 @@ function App() {
               hoverOrg={hoverOrg}
               onVisibleCount={setVisibleMapCount}
               onHover={(o, pos) => { setHoverOrg(o); if (pos) setHoverPos(pos); }}
+              mapMode={mapMode}
             />
           ) : (
             <ListView orgs={filtered} onSelectOrg={setSelectedOrg} />
@@ -248,9 +249,15 @@ function App() {
       <div className="sd-view-toggle-fab">
         <button className={`sd-chip ${view === "map" ? "active" : ""}`} onClick={() => setView("map")}>Map</button>
         <button className={`sd-chip ${view === "list" ? "active" : ""}`} onClick={() => setView("list")}>List</button>
+        <span className="sd-toggle-sep" />
+        <button
+          className="sd-chip"
+          onClick={() => setMapMode(m => m === "day" ? "night" : "day")}
+          title={mapMode === "day" ? "Switch to night mode" : "Switch to day mode"}
+        >{mapMode === "day" ? "Night" : "Day"}</button>
       </div>
 
-      {hoverOrg && view === "map" && !selectedOrg && (
+      {hoverOrg && view === "map" && hoverOrg.id !== selectedOrg?.id && (
         <Tooltip x={hoverPos.x} y={hoverPos.y} org={hoverOrg} />
       )}
 

@@ -6,10 +6,41 @@ const { useState, useEffect, useMemo, useRef, useCallback } = React;
 // ──────────────────────────────────────────────────────────────────────────
 function Tooltip({ x, y, org }) {
   if (!org) return null;
+  const groups = org.groups || [];
+  const catColor = (window.CATEGORIES[org.cat] || {}).color || "#888";
+
+  if (window.RESEARCH_MODE && groups.length > 0) {
+    return (
+      <div className="sd-tooltip sd-tooltip-research" style={{ left: x, top: y }}>
+        <div className="sd-tt-lab-header">
+          <span className="sd-tt-lab-dot" style={{ background: catColor }} />
+          <span className="sd-tt-lab-name">{org.name}</span>
+        </div>
+        <div className="sd-tt-divider" />
+        <div className="sd-tt-groups">
+          {groups.slice(0, 4).map((g, i) => (
+            <div key={i} className="sd-tt-group-row">
+              <span className="sd-tt-group-bullet" />
+              <span className="sd-tt-group-name">{g.name}</span>
+            </div>
+          ))}
+          {groups.length > 4 && (
+            <div className="sd-tt-group-row sd-tt-group-more">
+              <span className="sd-tt-group-bullet" />
+              <span className="sd-tt-group-name">+{groups.length - 4} more groups</span>
+            </div>
+          )}
+        </div>
+        <div className="sd-tt-divider" />
+        <span className="sd-tt-city">{org.city}, {org.country}</span>
+      </div>
+    );
+  }
+
   return (
     <div className="sd-tooltip" style={{ left: x, top: y }}>
       <span className="sd-tt-name">{org.name}</span>
-      {org._hoverJobTitle && <span className="sd-tt-city">{org._hoverJobTitle}</span>}
+      <span className="sd-tt-city">{org.city}, {org.country}</span>
     </div>
   );
 }
@@ -63,27 +94,54 @@ function OrgCard({ org, onClose, position, anchor }) {
           </a>
         )}
 
-        <div className="sd-card-jobs-head">
-          <span>Open positions</span>
-          <span className="sd-card-jobs-count">{org.jobs.length}</span>
-        </div>
-        <div className="sd-card-jobs">
-          {org.jobs.map((j, i) => (
-            <div key={i} className="sd-job">
-              <div className="sd-job-title">{j.title}</div>
-              <div className="sd-job-meta">
-                <span className={`sd-tag sd-tag-${j.type}`}>{fmtJobLabel(j)}</span>
-                <span className="sd-job-loc">{j.location}{j.remote ? ` · ${j.remote}` : ""}</span>
-                {j.salary && <span className="sd-job-sal">{j.salary}</span>}
-                {j.duration && <span className="sd-job-dur">{j.duration}</span>}
-                {j.language && <span className="sd-job-lang">{j.language}</span>}
-              </div>
-              {j.url && (
-                <a className="sd-job-link" href={j.url} target="_blank" rel="noreferrer">View listing ↗</a>
-              )}
+        {window.RESEARCH_MODE && (org.groups || []).length > 0 ? (
+          <>
+            <div className="sd-card-jobs-head">
+              <span>Research groups</span>
+              <span className="sd-card-jobs-count">{org.groups.length}</span>
             </div>
-          ))}
-        </div>
+            <div className="sd-card-jobs">
+              {org.groups.map((g, i) => (
+                <div key={i} className="sd-rg">
+                  <div className="sd-rg-head">
+                    <span className="sd-rg-name">{g.name}</span>
+                    {g.url && g.url !== org.url && (
+                      <a className="sd-rg-link" href={g.url} target="_blank" rel="noreferrer">↗</a>
+                    )}
+                  </div>
+                  {g.focus && <p className="sd-rg-focus">{g.focus}</p>}
+                  {g.hiring && (
+                    <span className="sd-rg-hiring">{g.hiring}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="sd-card-jobs-head">
+              <span>{window.RESEARCH_MODE ? "Opportunities" : "Open positions"}</span>
+              <span className="sd-card-jobs-count">{org.jobs.length}</span>
+            </div>
+            <div className="sd-card-jobs">
+              {org.jobs.map((j, i) => (
+                <div key={i} className="sd-job">
+                  <div className="sd-job-title">{j.title}</div>
+                  <div className="sd-job-meta">
+                    <span className={`sd-tag sd-tag-${j.type}`}>{fmtJobLabel(j)}</span>
+                    <span className="sd-job-loc">{j.location}{j.remote ? ` · ${j.remote}` : ""}</span>
+                    {j.salary && <span className="sd-job-sal">{j.salary}</span>}
+                    {j.duration && <span className="sd-job-dur">{j.duration}</span>}
+                    {j.language && <span className="sd-job-lang">{j.language}</span>}
+                  </div>
+                  {j.url && (
+                    <a className="sd-job-link" href={j.url} target="_blank" rel="noreferrer">View listing ↗</a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         <div className="sd-card-foot">
           Updated {fmtRelative(window.META?.lastUpdate)} · Next refresh {window.META?.nextUpdate || "Wed 20:00 CET"}
@@ -109,11 +167,15 @@ function SubmitModal({ open, onClose, meta, apiOnline, onSubmitted, endpoint = "
   const defaultCat = Object.keys(window.CATEGORIES)[0] || "studio";
   const emptyForm = { name: "", url: "", category: defaultCat, city: "", country: "", blurb: "", jobTitle: "", jobUrl: "" };
   const [form, setForm] = useState(emptyForm);
+  const [coord, setCoord] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [offline, setOffline] = useState(false);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   const [queueNumber, setQueueNumber] = useState(null);
+  const [geoQuery, setGeoQuery] = useState("");
+  const [geoResults, setGeoResults] = useState([]);
+  const [geoSearching, setGeoSearching] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -122,8 +184,36 @@ function SubmitModal({ open, onClose, meta, apiOnline, onSubmitted, endpoint = "
       setStatus("idle");
       setError("");
       setQueueNumber(null);
+      setCoord(null);
+      setGeoQuery("");
+      setGeoResults([]);
     }
   }, [open]);
+
+  const geoSearch = async () => {
+    const q = geoQuery.trim();
+    if (!q) return;
+    setGeoSearching(true);
+    setGeoResults([]);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&addressdetails=1`, { headers: { "Accept-Language": "en" } });
+      const data = await res.json();
+      setGeoResults(data || []);
+    } catch {
+      setGeoResults([]);
+    } finally {
+      setGeoSearching(false);
+    }
+  };
+
+  const pickGeoResult = (r) => {
+    const city = r.address?.city || r.address?.town || r.address?.village || r.address?.county || "";
+    const country = r.address?.country || "";
+    setForm({ ...form, city, country });
+    setCoord([parseFloat(r.lon), parseFloat(r.lat)]);
+    setGeoResults([]);
+    setGeoQuery(r.display_name);
+  };
 
   if (!open) return null;
   const set = (k, v) => setForm({ ...form, [k]: v });
@@ -154,10 +244,11 @@ function SubmitModal({ open, onClose, meta, apiOnline, onSubmitted, endpoint = "
 
     setStatus("submitting");
     try {
+      const payload = coord ? { ...form, coord } : { ...form };
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.errors?.join(" ") || data.error || "Submission failed.");
@@ -205,6 +296,33 @@ function SubmitModal({ open, onClose, meta, apiOnline, onSubmitted, endpoint = "
             <div className="sd-submit-body">
               <Field label="Organization" v={form.name} on={(v) => set("name", v)} placeholder="e.g. Civic Design Lab" />
               <Field label="Website" v={form.url} on={(v) => set("url", v)} placeholder="https://" />
+              <div className="sd-field">
+                <label>Location search</label>
+                <div className="sd-geo-search-row">
+                  <input
+                    className="sd-geo-search-input"
+                    value={geoQuery}
+                    onChange={(e) => setGeoQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); geoSearch(); } }}
+                    placeholder="Search institution, city, or address…"
+                  />
+                  <button type="button" className="sd-geo-search-btn-sm" onClick={geoSearch} disabled={geoSearching}>
+                    {geoSearching ? "…" : "Search"}
+                  </button>
+                </div>
+                {geoResults.length > 0 && (
+                  <div className="sd-geo-results-drop">
+                    {geoResults.map((r, i) => (
+                      <button key={i} type="button" className="sd-geo-result-item" onClick={() => pickGeoResult(r)}>
+                        {r.display_name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {coord && (
+                  <span className="sd-geo-coord-hint">📍 {coord[1].toFixed(4)}, {coord[0].toFixed(4)}</span>
+                )}
+              </div>
               <div className="sd-row-2">
                 <Field label="City" v={form.city} on={(v) => set("city", v)} />
                 <Field label="Country" v={form.country} on={(v) => set("country", v)} />

@@ -67,6 +67,7 @@ function rowToOrg(row) {
     url: row.url || "",
     blurb: row.blurb || "",
     jobs: JSON.parse(row.jobs || "[]"),
+    groups: JSON.parse(row.groups || "[]"),
   };
 }
 
@@ -169,14 +170,19 @@ function normalizeResearchSubmission(p) {
     },
   };
 }
+async function geocodeCity(query) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1`;
+    const res = await fetch(url, { headers: { "Accept-Language": "en", "User-Agent": "JobMapWorker/1.0" } });
+    const data = await res.json();
+    if (data?.[0]) return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
+  } catch { }
+  return null;
+}
+
 function submissionToOrg(sub, updates = {}) {
   const merged = { ...sub, ...updates };
   const coord = parseCoord(merged);
-  if (!coord) {
-    const err = new Error("Latitude and longitude required before approval.");
-    err.status = 422;
-    throw err;
-  }
   const jobTrack = ["intern","full-time","fellowship","contract"].includes(merged.jobTrack)
     ? merged.jobTrack : "full-time";
   const jobType = ["role","project"].includes(merged.jobType) ? merged.jobType : "role";
@@ -240,6 +246,33 @@ async function handleApi(request, url, env) {
       getMeta(DB),
     ]);
     return json({ orgs: rows.results.map(rowToOrg), meta });
+  }
+
+  /* PATCH /api/admin/orgs/:id — update coord (and optionally other fields) */
+  const orgPatchMatch = path.match(/^\/api\/admin\/orgs\/([^/]+)$/);
+  if (orgPatchMatch && method === "PATCH") {
+    if (!isAdmin(request, env)) return json({ error: "Admin token required." }, 401);
+    const orgId = decodeURIComponent(orgPatchMatch[1]);
+    const body  = await request.json().catch(() => ({}));
+    const sets = []; const binds = [];
+    if (Array.isArray(body.coord) && body.coord.length === 2) {
+      const [lng, lat] = [Number(body.coord[0]), Number(body.coord[1])];
+      if (Number.isFinite(lng) && Number.isFinite(lat)) {
+        sets.push("coord = ?"); binds.push(JSON.stringify([lng, lat]));
+      }
+    }
+    if (body.city    != null) { sets.push("city = ?");    binds.push(String(body.city).slice(0, 80)); }
+    if (body.country != null) { sets.push("country = ?"); binds.push(String(body.country).slice(0, 80)); }
+    if (body.name    != null) { sets.push("name = ?");    binds.push(String(body.name).slice(0, 120)); }
+    if (body.blurb   != null) { sets.push("blurb = ?");   binds.push(String(body.blurb).slice(0, 500)); }
+    if (body.url     != null) { sets.push("url = ?");     binds.push(String(body.url).slice(0, 300)); }
+    if (body.cat     != null) { sets.push("cat = ?");     binds.push(String(body.cat).slice(0, 30)); }
+    if (!sets.length) return json({ error: "Nothing to update." }, 400);
+    binds.push(orgId);
+    const result = await DB.prepare(`UPDATE orgs SET ${sets.join(", ")} WHERE id = ?`).bind(...binds).run();
+    if (!result.meta.changes) return json({ error: "Organization not found." }, 404);
+    await DB.prepare("INSERT OR REPLACE INTO meta (key,value) VALUES ('lastUpdate',?)").bind(new Date().toISOString()).run();
+    return json({ ok: true, meta: await getMeta(DB) });
   }
 
   /* DELETE /api/admin/orgs/:id/jobs/:index */
@@ -332,6 +365,9 @@ async function handleApi(request, url, env) {
     if (payload.status === "approved") {
       const sub = rowToSubmission(row);
       const org = submissionToOrg(sub, payload.updates || {});
+      if (!org.coord) {
+        org.coord = await geocodeCity(`${org.city}, ${org.country}`) || [0, 0];
+      }
       const coordStr = JSON.stringify(org.coord);
       const jobsStr  = JSON.stringify(org.jobs);
       await DB.prepare(
@@ -370,6 +406,35 @@ async function handleApi(request, url, env) {
     if (method !== "GET") return json({ error: "Method not allowed." }, 405);
     const rows = await DB.prepare("SELECT * FROM research_orgs ORDER BY name ASC").all();
     return json({ orgs: rows.results.map(rowToOrg) });
+  }
+
+  /* PATCH /api/admin/research/orgs/:id */
+  const rOrgPatchMatch = path.match(/^\/api\/admin\/research\/orgs\/([^/]+)$/);
+  if (rOrgPatchMatch && method === "PATCH") {
+    if (!isAdmin(request, env)) return json({ error: "Admin token required." }, 401);
+    const orgId = decodeURIComponent(rOrgPatchMatch[1]);
+    const body  = await request.json().catch(() => ({}));
+    const sets = []; const binds = [];
+    if (Array.isArray(body.coord) && body.coord.length === 2) {
+      const [lng, lat] = [Number(body.coord[0]), Number(body.coord[1])];
+      if (Number.isFinite(lng) && Number.isFinite(lat)) {
+        sets.push("coord = ?"); binds.push(JSON.stringify([lng, lat]));
+      }
+    }
+    if (body.city    != null) { sets.push("city = ?");    binds.push(String(body.city).slice(0, 80)); }
+    if (body.country != null) { sets.push("country = ?"); binds.push(String(body.country).slice(0, 80)); }
+    if (body.name    != null) { sets.push("name = ?");    binds.push(String(body.name).slice(0, 120)); }
+    if (body.blurb   != null) { sets.push("blurb = ?");   binds.push(String(body.blurb).slice(0, 500)); }
+    if (body.url     != null) { sets.push("url = ?");     binds.push(String(body.url).slice(0, 300)); }
+    if (body.cat     != null) { sets.push("cat = ?");     binds.push(String(body.cat).slice(0, 30)); }
+    if (Array.isArray(body.groups)) {
+      sets.push("groups = ?"); binds.push(JSON.stringify(body.groups));
+    }
+    if (!sets.length) return json({ error: "Nothing to update." }, 400);
+    binds.push(orgId);
+    const result = await DB.prepare(`UPDATE research_orgs SET ${sets.join(", ")} WHERE id = ?`).bind(...binds).run();
+    if (!result.meta.changes) return json({ error: "Lab not found." }, 404);
+    return json({ ok: true });
   }
 
   /* DELETE /api/admin/research/orgs/:id/jobs/:index */
@@ -439,6 +504,9 @@ async function handleApi(request, url, env) {
       // Use research category if valid, else sustain
       org.cat = RESEARCH_CATEGORY_KEYS.has(payload.updates?.category || sub.category)
         ? (payload.updates?.category || sub.category) : "sustain";
+      if (!org.coord) {
+        org.coord = await geocodeCity(`${org.city}, ${org.country}`) || [0, 0];
+      }
       const coordStr = JSON.stringify(org.coord);
       const jobsStr  = JSON.stringify(org.jobs);
       await DB.prepare(
